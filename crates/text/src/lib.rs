@@ -1,8 +1,9 @@
 //! Photocraft's type engine.
 //!
 //! * [`fonts::FontDb`]: bundled fonts (Inter, JetBrains Mono; always available, including on the
-//!   web), optional system fonts from a directory scan (no fontconfig), user font data, TrueType
-//!   collections, PostScript-name lookup. Builds made with the optional craft-fonts input
+//!   web), optional system fonts from platform directory scans plus Fontconfig's Linux file list,
+//!   user font data, TrueType collections, PostScript-name lookup. Builds made with the optional
+//!   craft-fonts input
 //!   (`CRAFT_FONTS_DIR`, see [`craft_fonts`]) also carry its Japanese fonts as fallbacks.
 //! * [`layout`]: shaping and line layout with [parley] (HarfRust shaping, bidi, line breaking),
 //!   point and paragraph (box) text, per-run styles, Photoshop leading/indent/spacing rules.
@@ -124,7 +125,7 @@ impl TextEngine {
     /// Lays out and rasterizes a text layer into document space.
     pub fn render(&mut self, layer: &TextLayer, dpi: f32, format: PixelFormat) -> (TextLayout, Rendered) {
         let l = self.layout(layer, dpi);
-        let warp = render::layout_warp(&l, layer.warp.as_ref());
+        let warp = render::layout_deform(&l, layer);
         let r = render::rasterize_warped(&l, &layer.transform, format, layer.antialias, warp.as_ref());
         (l, r)
     }
@@ -146,7 +147,9 @@ fn uses_system_fonts() -> bool {
 }
 
 fn new_shared() -> std::sync::Mutex<TextEngine> {
-    std::sync::Mutex::new(if uses_system_fonts() { TextEngine::with_system_fonts() } else { TextEngine::new() })
+    let mut engine = if uses_system_fonts() { TextEngine::with_system_fonts() } else { TextEngine::new() };
+    engine.fonts.mark_shared();
+    std::sync::Mutex::new(engine)
 }
 
 /// A process-wide engine for callers without their own (bundled fonts only on the web; bundled
